@@ -1,0 +1,86 @@
+name: Geometrie-Arbeitsblatt generieren und an Discord senden
+
+on:
+  # Manuell auslösen (über GitHub UI oder API)
+  workflow_dispatch:
+    inputs:
+      message:
+        description: "Optionale Nachricht für Discord"
+        required: false
+        default: "Neues Geometrie-Arbeitsblatt wurde generiert!"
+
+  # Automatisch bei Push auf main
+  push:
+    branches:
+      - main
+    paths:
+      - "generate_worksheet.py"
+      - "requirements.txt"
+
+jobs:
+  generate-and-send:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Repository auschecken
+      - name: Repository auschecken
+        uses: actions/checkout@v4
+
+      # 2. Python einrichten
+      - name: Python einrichten
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      # 3. Abhängigkeiten installieren
+      - name: Abhängigkeiten installieren
+        run: pip install -r requirements.txt
+
+      # 4. Arbeitsblatt generieren
+      - name: Arbeitsblatt generieren
+        run: python generate_worksheet.py
+
+      # 5. Dokument als Artefakt speichern (optional, nützlich zum Download)
+      - name: Artefakt hochladen
+        uses: actions/upload-artifact@v4
+        with:
+          name: geometrie-arbeitsblatt
+          path: geometrie_arbeitsblatt.docx
+          retention-days: 30
+
+      # 6. Datei an Discord senden
+      - name: An Discord senden
+        env:
+          DISCORD_WEBHOOK_URL: ${{ vars.DISCORD_WEBHOOK_URL }}
+        run: |
+          # Nachricht aus Input oder Standard-Text
+          DISCORD_MSG="${{ github.event.inputs.message }}"
+          if [ -z "$DISCORD_MSG" ]; then
+            DISCORD_MSG="📐 Neues Geometrie-Arbeitsblatt wurde automatisch generiert!"
+          fi
+
+          # Metadaten als JSON für Discord
+          PAYLOAD=$(cat <<EOF
+          {
+            "content": "$DISCORD_MSG\n\n**Commit:** \`${{ github.sha }}\`\n**Branch:** \`${{ github.ref_name }}\`\n**Ausgelöst von:** ${{ github.actor }}"
+          }
+          EOF
+          )
+
+          # Erst Textnachricht schicken, dann Datei
+          curl --fail-with-body -X POST \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD" \
+            "$DISCORD_WEBHOOK_URL"
+
+          # Kurze Pause, damit Discord die Nachrichten in Reihenfolge empfängt
+          sleep 1
+
+          # Datei hochladen
+          curl --fail-with-body -X POST \
+            -F "file=@geometrie_arbeitsblatt.docx;type=application/vnd.openxmlformats-officedocument.wordprocessingml.document" \
+            -F 'payload_json={"content": ""}' \
+            "$DISCORD_WEBHOOK_URL"
+
+          echo "Erfolgreich an Discord gesendet."
