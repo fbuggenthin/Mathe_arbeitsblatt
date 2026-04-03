@@ -1,4 +1,4 @@
-name: Geometrie-Arbeitsblatt generieren und an Discord senden
+name: Generate and Send Worksheet
 
 on:
   # Manuell auslösen (über GitHub UI oder API)
